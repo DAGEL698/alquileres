@@ -142,9 +142,42 @@
                 if (field === 'alquilerMexico' || field === 'alquiler6Agosto' || field === 'dia') {
                     parsedValue = parseFloat(value) || 0;
                 }
+                
                 setData(prevData =>
-                    prevData.map(row => row.id === id ? { ...row, [field]: parsedValue } : row)
+                    prevData.map(row => {
+                        if (row.id === id) {
+                            const updatedRow = { ...row, [field]: parsedValue };
+                            
+                            // AUTO-COMPLETAR PRECIO DE MÉXICO SEGÚN EL DÍA DE LA SEMANA
+                            if (field === 'dia' && parsedValue > 0 && parsedValue <= 31) {
+                                const mesIdx = mesesDisponibles.indexOf(updatedRow.mes);
+                                const dateObj = new Date(currentYear, mesIdx, parsedValue);
+                                const dayOfWeek = dateObj.getDay(); // 0: Dom, 1: Lun, 2: Mar, 3: Mie, 4: Jue, 5: Vie, 6: Sab
+                                
+                                const preciosMexico = {
+                                    1: 238, // Lunes
+                                    2: 238, // Martes
+                                    3: 288, // Miércoles
+                                    4: 338, // Jueves
+                                    5: 538, // Viernes
+                                    6: 538, // Sábado
+                                    0: 238  // Domingo
+                                };
+                                updatedRow.alquilerMexico = preciosMexico[dayOfWeek];
+
+                                // NUEVO: AUTO-COMPLETAR PRECIO 6 DE AGOSTO
+                                const diasDelMes = new Date(currentYear, mesIdx + 1, 0).getDate();
+                                const calculo6Agosto = (900 / diasDelMes) + 23;
+                                // Redondeamos a 2 decimales para dinero (ej: 52.03)
+                                updatedRow.alquiler6Agosto = parseFloat(calculo6Agosto.toFixed(2));
+                            }
+                            
+                            return updatedRow;
+                        }
+                        return row;
+                    })
                 );
+                
                 setHasUnsavedChanges(true);
                 setShowSuccess(false);
                 unsavedRef.current = true;
