@@ -2,10 +2,17 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
     <title>Dashboard Alquileres Nube</title>
     <!-- Tailwind CSS para el diseño -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom Scrollbar para la tabla suave en celular */
+        .custom-scrollbar::-webkit-scrollbar { height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #16192b; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #34384e; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #d946ef; }
+    </style>
     <!-- React y ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -126,7 +133,9 @@
             }, []);
 
             const mesesDisponibles = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-            const [selectedMonth, setSelectedMonth] = useState('Febrero');
+            const [selectedMonth, setSelectedMonth] = useState(() => {
+                return localStorage.getItem('dashboard_ultimo_mes') || 'Febrero';
+            });
             const currentYear = new Date().getFullYear();
 
             const monthIndex = mesesDisponibles.indexOf(selectedMonth);
@@ -258,25 +267,25 @@
 
             return (
                 <div className="min-h-screen pb-10 bg-[#16192b]">
-                    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
+                    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto space-y-5 sm:space-y-6">
                         
                         {/* Header */}
-                        <header className="flex flex-col xl:flex-row items-start xl:items-center justify-between bg-[#222538] p-6 rounded-3xl shadow-lg border border-[#34384e] gap-4 mt-2">
-                            <div>
-                                <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                        <header className="flex flex-col xl:flex-row items-start xl:items-center justify-between bg-[#222538] p-4 sm:p-6 rounded-3xl shadow-lg border border-[#34384e] gap-4 mt-2">
+                            <div className="w-full xl:w-auto text-center xl:text-left">
+                                <h1 className="text-2xl font-bold text-white flex items-center justify-center xl:justify-start gap-2">
                                     CRM Dashboard
                                 </h1>
                                 <p className="text-slate-400 text-sm mt-1">Control de Alquileres · Diseño Neón</p>
                             </div>
-                            <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
-                                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold ${connectionStatus.includes('Nube Conectada') ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-orange-500/10 text-orange-400 border border-orange-500/20'}`}>
+                            <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3 w-full xl:w-auto">
+                                <div className={`flex items-center justify-center w-full sm:w-auto gap-2 px-3 py-2 rounded-xl text-sm font-semibold ${connectionStatus.includes('Nube Conectada') ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-orange-500/10 text-orange-400 border border-orange-500/20'}`}>
                                     {connectionStatus}
                                 </div>
                                 
                                 <button
                                     onClick={handleSave}
                                     disabled={(!hasUnsavedChanges && !isSaving) || showSuccess}
-                                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all text-sm shadow-lg ${
+                                    className={`flex items-center justify-center w-full sm:w-auto gap-2 px-6 py-2.5 rounded-xl font-bold transition-all text-base sm:text-sm shadow-lg ${
                                         isSaving ? 'bg-[#3a3f58] text-white cursor-wait' : 
                                         showSuccess ? 'bg-gradient-to-r from-emerald-400 to-teal-500 text-white' :
                                         hasUnsavedChanges ? 'bg-gradient-to-r from-fuchsia-500 to-purple-600 hover:opacity-90 text-white cursor-pointer shadow-fuchsia-500/20' : 
@@ -286,9 +295,16 @@
                                     {isSaving ? '⏳ Procesando...' : showSuccess ? '✅ ¡Guardado!' : '💾 Guardar Cambios'}
                                 </button>
 
-                                <div className="flex items-center gap-2 bg-[#16192b] border border-[#34384e] px-4 py-2 rounded-xl">
+                                <div className="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-2 bg-[#16192b] border border-[#34384e] px-4 py-2 rounded-xl">
                                     <span className="text-slate-400">📅</span>
-                                    <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-transparent font-bold text-white outline-none cursor-pointer">
+                                    <select 
+                                        value={selectedMonth} 
+                                        onChange={(e) => {
+                                            setSelectedMonth(e.target.value);
+                                            localStorage.setItem('dashboard_ultimo_mes', e.target.value);
+                                        }} 
+                                        className="bg-transparent font-bold text-white outline-none cursor-pointer w-full text-base sm:text-sm"
+                                    >
                                         {mesesDisponibles.map(mes => <option key={mes} value={mes} className="bg-[#16192b] text-white">{mes}</option>)}
                                     </select>
                                 </div>
@@ -390,13 +406,13 @@
 
                         {/* Tabla Editable */}
                         <div className="bg-[#222538] rounded-3xl shadow-lg border border-[#34384e] overflow-hidden">
-                            <div className="p-6 border-b border-[#34384e] bg-[#222538] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                <h2 className="text-lg font-bold text-white flex items-center gap-2">Data Status / {selectedMonth}</h2>
-                                <button onClick={handleAddRow} className="px-5 py-2.5 bg-[#2a2d43] border border-[#34384e] text-white text-sm font-semibold rounded-xl hover:bg-[#34384e] transition-colors shadow-sm">
+                            <div className="p-4 sm:p-6 border-b border-[#34384e] bg-[#222538] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <h2 className="text-lg font-bold text-white flex items-center justify-center sm:justify-start gap-2">Data Status / {selectedMonth}</h2>
+                                <button onClick={handleAddRow} className="w-full sm:w-auto px-5 py-3 sm:py-2.5 bg-[#2a2d43] border border-[#34384e] text-white text-base sm:text-sm font-semibold rounded-xl hover:bg-[#34384e] transition-colors shadow-sm">
                                     + Añadir Registro
                                 </button>
                             </div>
-                            <div className="overflow-x-auto">
+                            <div className="overflow-x-auto pb-2 custom-scrollbar">
                                 <table className="w-full text-left border-collapse min-w-[800px]">
                                     <thead>
                                         <tr className="bg-[#16192b]/50 text-slate-400 text-xs uppercase tracking-wider border-b border-[#34384e]">
@@ -415,12 +431,12 @@
                                             const totalDia = (Number(row.alquilerMexico) || 0) + (Number(row.alquiler6Agosto) || 0);
                                             return (
                                                 <tr key={row.id} className={`transition-colors hover:bg-[#2a2d43]/50 ${row.pagado ? 'bg-cyan-500/5' : ''}`}>
-                                                    <td className="p-2 w-32"><div className="w-full p-2.5 text-sm text-slate-400 font-medium bg-[#16192b] rounded-xl select-none">{row.mes}</div></td>
-                                                    <td className="p-2 w-20"><input type="number" value={row.dia} onChange={(e) => handleEdit(row.id, 'dia', e.target.value)} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-fuchsia-500 outline-none text-sm text-center text-white font-medium"/></td>
-                                                    <td className="p-2"><input type="number" value={row.alquilerMexico} onChange={(e) => handleEdit(row.id, 'alquilerMexico', e.target.value)} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-fuchsia-500 outline-none text-sm text-fuchsia-400 font-bold"/></td>
-                                                    <td className="p-2"><input type="number" value={row.alquiler6Agosto} onChange={(e) => handleEdit(row.id, 'alquiler6Agosto', e.target.value)} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-cyan-500 outline-none text-sm text-cyan-400 font-bold"/></td>
+                                                    <td className="p-2 w-32"><div className="w-full p-2.5 text-sm sm:text-sm text-slate-400 font-medium bg-[#16192b] rounded-xl select-none">{row.mes}</div></td>
+                                                    <td className="p-2 w-20"><input type="number" value={row.dia} onChange={(e) => handleEdit(row.id, 'dia', e.target.value)} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-fuchsia-500 outline-none text-base sm:text-sm text-center text-white font-medium"/></td>
+                                                    <td className="p-2 w-28"><input type="number" value={row.alquilerMexico} onChange={(e) => handleEdit(row.id, 'alquilerMexico', e.target.value)} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-fuchsia-500 outline-none text-base sm:text-sm text-fuchsia-400 font-bold"/></td>
+                                                    <td className="p-2 w-28"><input type="number" value={row.alquiler6Agosto} onChange={(e) => handleEdit(row.id, 'alquiler6Agosto', e.target.value)} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-cyan-500 outline-none text-base sm:text-sm text-cyan-400 font-bold"/></td>
                                                     <td className="p-2 w-48">
-                                                        <select value={row.metodoPago} onChange={(e) => handleEdit(row.id, 'metodoPago', e.target.value)} className={`w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl outline-none text-sm font-medium text-white cursor-pointer ${row.metodoPago.includes('FALTA') ? 'border-fuchsia-500/50 text-fuchsia-400' : ''}`}>
+                                                        <select value={row.metodoPago} onChange={(e) => handleEdit(row.id, 'metodoPago', e.target.value)} className={`w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl outline-none text-base sm:text-sm font-medium text-white cursor-pointer ${row.metodoPago.includes('FALTA') ? 'border-fuchsia-500/50 text-fuchsia-400' : ''}`}>
                                                             <option value="" className="bg-[#16192b]">Seleccionar...</option>
                                                             <option value="Transferencia QR" className="bg-[#16192b]">Transferencia QR</option>
                                                             <option value="Efectivo" className="bg-[#16192b]">Efectivo</option>
@@ -429,10 +445,10 @@
                                                         </select>
                                                     </td>
                                                     <td className="p-2 text-center">
-                                                        <input type="checkbox" checked={row.pagado} onChange={(e) => handleEdit(row.id, 'pagado', e.target.checked)} className="w-5 h-5 accent-cyan-500 cursor-pointer rounded bg-[#16192b] border-[#34384e]"/>
+                                                        <input type="checkbox" checked={row.pagado} onChange={(e) => handleEdit(row.id, 'pagado', e.target.checked)} className="w-7 h-7 sm:w-5 sm:h-5 accent-cyan-500 cursor-pointer rounded bg-[#16192b] border-[#34384e]"/>
                                                     </td>
-                                                    <td className="p-2"><input type="text" value={row.notas} onChange={(e) => handleEdit(row.id, 'notas', e.target.value)} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-cyan-500 outline-none text-sm text-slate-300" placeholder="Añadir nota..."/></td>
-                                                    <td className="p-4 text-right font-bold text-white">${totalDia}</td>
+                                                    <td className="p-2"><input type="text" value={row.notas} onChange={(e) => handleEdit(row.id, 'notas', e.target.value)} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-cyan-500 outline-none text-base sm:text-sm text-slate-300" placeholder="Añadir nota..."/></td>
+                                                    <td className="p-4 text-right font-bold text-white whitespace-nowrap">${totalDia}</td>
                                                 </tr>
                                             );
                                         })}
