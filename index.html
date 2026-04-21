@@ -60,13 +60,18 @@
         const { useState, useMemo, useEffect } = React;
 
         const defaultInitialData = [
-          { id: '1', mes: 'Febrero', dia: 1, alquilerMexico: 238, alquiler6Agosto: 52, metodoPago: 'Transferencia QR', pagado: false, notas: '-' },
-          { id: '2', mes: 'Febrero', dia: 2, alquilerMexico: 238, alquiler6Agosto: 52, metodoPago: 'Transferencia QR', pagado: false, notas: '-' },
-          { id: '10', mes: 'Marzo', dia: 1, alquilerMexico: 250, alquiler6Agosto: 60, metodoPago: 'Efectivo', pagado: true, notas: 'Inicio de mes' }
+          { id: '1', mes: 'Febrero', dia: 1, alquilerMexico: 238, alquiler6Agosto: 52, metodoPago: 'Transferencia QR', pagado: false },
+          { id: '2', mes: 'Febrero', dia: 2, alquilerMexico: 238, alquiler6Agosto: 52, metodoPago: 'Transferencia QR', pagado: false },
+          { id: '10', mes: 'Marzo', dia: 1, alquilerMexico: 250, alquiler6Agosto: 60, metodoPago: 'Efectivo', pagado: true }
         ];
 
         function App() {
             const [data, setData] = useState([]);
+            
+            // ESTADOS PARA LA LISTA DE NOTAS
+            const [notasGenerales, setNotasGenerales] = useState([]);
+            const [nuevaNota, setNuevaNota] = useState('');
+            
             const [isLoading, setIsLoading] = useState(true);
             const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
             const [isSaving, setIsSaving] = useState(false);
@@ -90,6 +95,12 @@
                         } else {
                             setData(defaultInitialData);
                         }
+                        // Cargar notas locales
+                        const localNotas = localStorage.getItem('dashboard_notas_lista');
+                        if (localNotas) {
+                            try { setNotasGenerales(JSON.parse(localNotas)); } 
+                            catch (e) { setNotasGenerales([]); }
+                        }
                     } catch (e) {
                         setData(defaultInitialData);
                     } finally {
@@ -100,6 +111,7 @@
 
                 if (isCloudConnected && !isLocalFile) {
                     auth.signInAnonymously().then(() => {
+                        // Sincronizar tabla de alquileres
                         db.collection("alquileres").onSnapshot((snapshot) => {
                             clearTimeout(failsafeTimer);
                             setConnectionStatus('☁️ Nube Conectada');
@@ -119,6 +131,14 @@
                             clearTimeout(failsafeTimer);
                             setConnectionStatus('⚠️ Error de Nube');
                             cargarLocal();
+                        });
+
+                        // Sincronizar Notas Generales
+                        db.collection("configuracion").doc("notasLista").onSnapshot((docSnap) => {
+                            if (unsavedRef.current) return;
+                            if (docSnap.exists) {
+                                setNotasGenerales(docSnap.data().lista || []);
+                            }
                         });
                     }).catch(error => {
                         clearTimeout(failsafeTimer);
@@ -157,30 +177,18 @@
                         if (row.id === id) {
                             const updatedRow = { ...row, [field]: parsedValue };
                             
-                            // AUTO-COMPLETAR PRECIO DE MÉXICO SEGÚN EL DÍA DE LA SEMANA
                             if (field === 'dia' && parsedValue > 0 && parsedValue <= 31) {
                                 const mesIdx = mesesDisponibles.indexOf(updatedRow.mes);
                                 const dateObj = new Date(currentYear, mesIdx, parsedValue);
-                                const dayOfWeek = dateObj.getDay(); // 0: Dom, 1: Lun, 2: Mar, 3: Mie, 4: Jue, 5: Vie, 6: Sab
+                                const dayOfWeek = dateObj.getDay(); 
                                 
-                                const preciosMexico = {
-                                    1: 238, // Lunes
-                                    2: 238, // Martes
-                                    3: 288, // Miércoles
-                                    4: 338, // Jueves
-                                    5: 538, // Viernes
-                                    6: 538, // Sábado
-                                    0: 238  // Domingo
-                                };
+                                const preciosMexico = { 1: 238, 2: 238, 3: 288, 4: 338, 5: 538, 6: 538, 0: 238 };
                                 updatedRow.alquilerMexico = preciosMexico[dayOfWeek];
 
-                                // NUEVO: AUTO-COMPLETAR PRECIO 6 DE AGOSTO
                                 const diasDelMes = new Date(currentYear, mesIdx + 1, 0).getDate();
                                 const calculo6Agosto = (900 / diasDelMes) + 23;
-                                // Redondeamos a 2 decimales para dinero (ej: 52.03)
                                 updatedRow.alquiler6Agosto = parseFloat(calculo6Agosto.toFixed(2));
                             }
-                            
                             return updatedRow;
                         }
                         return row;
@@ -194,8 +202,38 @@
 
             const handleAddRow = () => {
                 const newId = Date.now().toString();
-                const newRow = { id: newId, mes: selectedMonth, dia: '', alquilerMexico: 0, alquiler6Agosto: 0, metodoPago: '', pagado: false, notas: '' };
+                const newRow = { id: newId, mes: selectedMonth, dia: '', alquilerMexico: 0, alquiler6Agosto: 0, metodoPago: '', pagado: false };
                 setData([...data, newRow]);
+                setHasUnsavedChanges(true);
+                setShowSuccess(false);
+                unsavedRef.current = true;
+            };
+
+            const handleKeyDown = (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault(); 
+                    e.target.blur(); 
+                    handleSave(); 
+                }
+            };
+
+            // FUNCIÓN: Añadir una nota a la lista al dar Enter
+            const handleAddNota = (e) => {
+                if (e.key === 'Enter' && nuevaNota.trim() !== '') {
+                    e.preventDefault();
+                    const nuevaLista = [...notasGenerales, { id: Date.now().toString(), text: nuevaNota.trim() }];
+                    setNotasGenerales(nuevaLista);
+                    setNuevaNota('');
+                    setHasUnsavedChanges(true);
+                    setShowSuccess(false);
+                    unsavedRef.current = true;
+                }
+            };
+
+            // FUNCIÓN: Borrar una nota de la lista
+            const handleEliminarNota = (idBorrar) => {
+                const nuevaLista = notasGenerales.filter(nota => nota.id !== idBorrar);
+                setNotasGenerales(nuevaLista);
                 setHasUnsavedChanges(true);
                 setShowSuccess(false);
                 unsavedRef.current = true;
@@ -208,6 +246,7 @@
                 
                 try {
                     localStorage.setItem('dashboard_alquileres_archivo', JSON.stringify(data));
+                    localStorage.setItem('dashboard_notas_lista', JSON.stringify(notasGenerales));
                 } catch (e) {}
 
                 if (isLocalFile) {
@@ -217,10 +256,15 @@
                 if (isCloudConnected && connectionStatus === '☁️ Nube Conectada') {
                     try {
                         const batch = db.batch();
+                        
                         data.forEach(row => {
                             const docRef = db.collection("alquileres").doc(row.id.toString());
                             batch.set(docRef, row, { merge: true });
                         });
+
+                        const notesRef = db.collection("configuracion").doc("notasLista");
+                        batch.set(notesRef, { lista: notasGenerales }, { merge: true });
+
                         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 15000));
                         await Promise.race([batch.commit(), timeoutPromise]);
                         guardadoNube = true;
@@ -404,7 +448,7 @@
                             </div>
                         </div>
 
-                        {/* Tabla Editable */}
+                        {/* Tabla Editable SIN LA COLUMNA DE NOTAS */}
                         <div className="bg-[#222538] rounded-3xl shadow-lg border border-[#34384e] overflow-hidden">
                             <div className="p-4 sm:p-6 border-b border-[#34384e] bg-[#222538] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 <h2 className="text-lg font-bold text-white flex items-center justify-center sm:justify-start gap-2">Data Status / {selectedMonth}</h2>
@@ -413,7 +457,7 @@
                                 </button>
                             </div>
                             <div className="overflow-x-auto pb-2 custom-scrollbar">
-                                <table className="w-full text-left border-collapse min-w-[800px]">
+                                <table className="w-full text-left border-collapse min-w-[700px]">
                                     <thead>
                                         <tr className="bg-[#16192b]/50 text-slate-400 text-xs uppercase tracking-wider border-b border-[#34384e]">
                                             <th className="p-4 font-semibold">Mes</th>
@@ -422,7 +466,6 @@
                                             <th className="p-4 font-semibold text-cyan-400">6 De Agosto</th>
                                             <th className="p-4 font-semibold">Método</th>
                                             <th className="p-4 font-semibold text-center">Pagado</th>
-                                            <th className="p-4 font-semibold">Notas</th>
                                             <th className="p-4 font-semibold text-right">Total</th>
                                         </tr>
                                     </thead>
@@ -432,11 +475,11 @@
                                             return (
                                                 <tr key={row.id} className={`transition-colors hover:bg-[#2a2d43]/50 ${row.pagado ? 'bg-cyan-500/5' : ''}`}>
                                                     <td className="p-2 w-32"><div className="w-full p-2.5 text-sm sm:text-sm text-slate-400 font-medium bg-[#16192b] rounded-xl select-none">{row.mes}</div></td>
-                                                    <td className="p-2 w-20"><input type="number" value={row.dia} onChange={(e) => handleEdit(row.id, 'dia', e.target.value)} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-fuchsia-500 outline-none text-base sm:text-sm text-center text-white font-medium"/></td>
-                                                    <td className="p-2 w-28"><input type="number" value={row.alquilerMexico} onChange={(e) => handleEdit(row.id, 'alquilerMexico', e.target.value)} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-fuchsia-500 outline-none text-base sm:text-sm text-fuchsia-400 font-bold"/></td>
-                                                    <td className="p-2 w-28"><input type="number" value={row.alquiler6Agosto} onChange={(e) => handleEdit(row.id, 'alquiler6Agosto', e.target.value)} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-cyan-500 outline-none text-base sm:text-sm text-cyan-400 font-bold"/></td>
+                                                    <td className="p-2 w-20"><input type="number" value={row.dia} onChange={(e) => handleEdit(row.id, 'dia', e.target.value)} onKeyDown={handleKeyDown} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-fuchsia-500 outline-none text-base sm:text-sm text-center text-white font-medium"/></td>
+                                                    <td className="p-2 w-28"><input type="number" value={row.alquilerMexico} onChange={(e) => handleEdit(row.id, 'alquilerMexico', e.target.value)} onKeyDown={handleKeyDown} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-fuchsia-500 outline-none text-base sm:text-sm text-fuchsia-400 font-bold"/></td>
+                                                    <td className="p-2 w-28"><input type="number" value={row.alquiler6Agosto} onChange={(e) => handleEdit(row.id, 'alquiler6Agosto', e.target.value)} onKeyDown={handleKeyDown} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-cyan-500 outline-none text-base sm:text-sm text-cyan-400 font-bold"/></td>
                                                     <td className="p-2 w-48">
-                                                        <select value={row.metodoPago} onChange={(e) => handleEdit(row.id, 'metodoPago', e.target.value)} className={`w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl outline-none text-base sm:text-sm font-medium text-white cursor-pointer ${row.metodoPago.includes('FALTA') ? 'border-fuchsia-500/50 text-fuchsia-400' : ''}`}>
+                                                        <select value={row.metodoPago} onChange={(e) => handleEdit(row.id, 'metodoPago', e.target.value)} onKeyDown={handleKeyDown} className={`w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl outline-none text-base sm:text-sm font-medium text-white cursor-pointer ${row.metodoPago.includes('FALTA') ? 'border-fuchsia-500/50 text-fuchsia-400' : ''}`}>
                                                             <option value="" className="bg-[#16192b]">Seleccionar...</option>
                                                             <option value="Transferencia QR" className="bg-[#16192b]">Transferencia QR</option>
                                                             <option value="Efectivo" className="bg-[#16192b]">Efectivo</option>
@@ -445,9 +488,8 @@
                                                         </select>
                                                     </td>
                                                     <td className="p-2 text-center">
-                                                        <input type="checkbox" checked={row.pagado} onChange={(e) => handleEdit(row.id, 'pagado', e.target.checked)} className="w-7 h-7 sm:w-5 sm:h-5 accent-cyan-500 cursor-pointer rounded bg-[#16192b] border-[#34384e]"/>
+                                                        <input type="checkbox" checked={row.pagado} onChange={(e) => handleEdit(row.id, 'pagado', e.target.checked)} onKeyDown={handleKeyDown} className="w-7 h-7 sm:w-5 sm:h-5 accent-cyan-500 cursor-pointer rounded bg-[#16192b] border-[#34384e]"/>
                                                     </td>
-                                                    <td className="p-2"><input type="text" value={row.notas} onChange={(e) => handleEdit(row.id, 'notas', e.target.value)} className="w-full p-2.5 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-cyan-500 outline-none text-base sm:text-sm text-slate-300" placeholder="Añadir nota..."/></td>
                                                     <td className="p-4 text-right font-bold text-white whitespace-nowrap">${totalDia}</td>
                                                 </tr>
                                             );
@@ -456,6 +498,48 @@
                                 </table>
                             </div>
                         </div>
+
+                        {/* NUEVO: SECCIÓN DE NOTAS TIPO LISTA DE TAREAS */}
+                        <div className="bg-[#222538] p-4 sm:p-6 rounded-3xl shadow-lg border border-[#34384e]">
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-4">
+                                📝 Notas y Pendientes
+                            </h2>
+                            
+                            <input
+                                type="text"
+                                value={nuevaNota}
+                                onChange={(e) => setNuevaNota(e.target.value)}
+                                onKeyDown={handleAddNota}
+                                placeholder="Escribe un apunte y presiona ENTER para agregarlo..."
+                                className="w-full p-3 sm:p-4 mb-4 bg-[#16192b] border border-[#34384e] rounded-xl focus:border-fuchsia-500 outline-none text-base sm:text-sm text-white transition-colors"
+                            />
+
+                            <div className="space-y-3">
+                                {notasGenerales.map((nota) => (
+                                    <div key={nota.id} className="flex items-center justify-between p-3 sm:p-4 bg-[#16192b] border border-[#34384e] rounded-xl group hover:border-cyan-500/50 transition-colors">
+                                        <div className="flex items-center gap-3 text-slate-300 text-sm">
+                                            <span className="text-fuchsia-400 text-lg leading-none">❖</span>
+                                            {nota.text}
+                                        </div>
+                                        <button 
+                                            onClick={() => handleEliminarNota(nota.id)}
+                                            className="text-slate-500 hover:text-red-400 md:opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                            title="Eliminar apunte"
+                                        >
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                ))}
+                                {notasGenerales.length === 0 && (
+                                    <div className="text-center text-slate-500 text-sm py-4">
+                                        No hay notas. Escribe algo en la barra de arriba.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             );
